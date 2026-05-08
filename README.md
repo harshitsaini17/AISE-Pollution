@@ -106,13 +106,6 @@ Install with:
 ```bash
 pip install -r requirements.txt
 ```
-
----
-
-## Reproducibility (Kaggle Notebook)
-Open the Kaggle notebook and run all cells in order:
-[**Group ID 46 — PRML Project**](https://www.kaggle.com/code/tahseen123/group-id-46-prml-project)
-
 ---
 
 ## Notes
@@ -121,6 +114,3 @@ Open the Kaggle notebook and run all cells in order:
 - `/kaggle/temp/` is non-persistent and suitable for intermediate artifacts
 
 ---
-
-## Presentation
-**Project slides:** https://canva.link/gz3uqqwwhhx3w1p
