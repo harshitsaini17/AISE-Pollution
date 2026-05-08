@@ -1,129 +1,126 @@
-# 🌫️ PM2.5 Concentration Forecasting
+# PM2.5 Concentration Forecasting with Wavelet Neural Operators
 
-## 📖 Overview
+## Overview
+India’s air quality remains critically degraded; fine particulate matter (PM2.5, particles < 2.5 μm) is associated with approximately 1.67 million premature deaths annually. Traditional chemical transport models rely on computationally expensive differential equations, whereas data-driven models can learn spatiotemporal dynamics directly from simulations.
 
-- 🇮India's air quality is severely degraded — PM2.5 (particles < 2.5µm) causes ~1.67 million deaths annually.
-- 🧮 Traditional air quality models solve complex differential equations and need large computational resources. Machine Learning models offer a faster alternative by learning directly from data and providing quicker forecasts, enabling timely public health interventions.
-- 🎯 This project uses deep learning to **forecast hourly PM2.5 concentrations** over a 140 × 124 spatial grid covering India.
-- 📥 **Input:** 10 hours of meteorological, emission, and atmospheric features.
-- 📤 **Output:** Next 16 hours of PM2.5 predictions at every grid cell.
-- 📂 **Dataset:** WRF-Chem simulation data for the year 2016.
+This repository presents a deep-learning framework to **forecast hourly PM2.5 concentrations** over a **140 × 124** spatial grid covering India, using WRF-Chem simulation data for 2016.
+
+**Problem formulation**
+- **Input:** 10 hours of meteorological, emission, and atmospheric features
+- **Output:** Next 16 hours of PM2.5 predictions at every grid cell
+- **Dataset:** WRF-Chem simulation data (2016)
 
 ---
 
-## 🧠 Model Architecture
-
-The model is a **Wavelet Neural Operator (WNO)** that replaces classic Fourier spectral convolutions with **2D Haar Discrete Wavelet Transforms**:
+## Model Architecture
+The model is a **Wavelet Neural Operator (WNO)** that replaces Fourier spectral convolutions with **2D Haar Discrete Wavelet Transforms**, enabling multi-scale spatial reasoning.
 
 ```
 Input → Conv1×1 Encoder → [WNO Block ×4] → GELU → Conv1×1 Decoder → + Residual → Output
 ```
 
 Each **WNO Block** performs:
-1. 🔹 GroupNorm on the input
-2. 🔹 Haar DWT — decomposes into LL / LH / HL / HH sub-bands
-3. 🔹 Spectral Mixer — group-wise 3×3 conv across the 4 sub-bands
-4. 🔹 Inverse Haar DWT — reconstructs to full resolution
-5. 🔹 Spatial Mixer — depthwise 5×5 conv for long-range spatial context
-6. 🔹 Pointwise Conv + GELU activation + Residual connection
+1. Group Normalization
+2. Haar DWT (LL / LH / HL / HH sub-bands)
+3. Spectral mixing (group-wise 3×3 conv across sub-bands)
+4. Inverse Haar DWT
+5. Spatial mixing (depthwise 5×5 conv)
+6. Pointwise conv + GELU + residual
 
-The decoder outputs a **delta** (change) added to the last known PM2.5 state — the network learns the *change* from the current state rather than absolute values.
+The decoder predicts a **delta** added to the last observed PM2.5 state, enabling the model to learn **changes** rather than absolute values.
 
-Training uses a **3-model ensemble** (seeds `[0, 42, 2026]`) with SWA, cosine annealing LR, spatial gradient loss, and horizon weighting.
+**Training strategy**
+- 3-model ensemble with seeds `[0, 42, 2026]`
+- Stochastic Weight Averaging (SWA)
+- Cosine annealing learning rate schedule
+- Combined loss: MSE + spatial gradient penalty
+- Horizon weighting for multi-step forecasts
 
 ---
 
-## 📁 Repository Structure
-
+## Repository Structure
 ```
 AISE-Pollution/
-├── 📂 configs/                       # YAML configuration files
-│   ├── prepare_dataset.yaml         #   Dataset preparation settings
-│   ├── train.yaml                   #   Training hyperparameters
-│   └── infer.yaml                   #   Inference settings
-├── 📂 models/
-│   └── baseline_model.py            # WNO model definition
-├── 📂 scripts/
-│   ├── prepare_dataset.py           # Stage 1 — data preprocessing & normalization
-│   ├── train.py                     # Stage 2 — multi-seed ensemble training
-│   ├── infer.py                     # Stage 3 — ensemble inference & submission
-│   ├── data_exploration.py          # EDA utilities
-│   ├── results_analysis.py          # Result evaluation
-│   └── interpret_results.py         # Result interpretation & visualisation
-├── 📂 src/
-│   └── utils/                       # Helper modules (optimizer, config loader, metrics)
-├── 📂 notebooks/                     # Jupyter notebooks for experimentation
-├── 📄 requirements.txt               # Python dependencies
-└── 📄 README.md
+├── configs/                        # YAML configuration files
+│   ├── prepare_dataset.yaml        # Dataset preparation settings
+│   ├── train.yaml                  # Training hyperparameters
+│   └── infer.yaml                  # Inference settings
+├── models/
+│   └── baseline_model.py           # WNO model definition
+├── scripts/
+│   ├── prepare_dataset.py          # Stage 1 — preprocessing & normalization
+│   ├── train.py                    # Stage 2 — multi-seed ensemble training
+│   ├── infer.py                    # Stage 3 — ensemble inference
+│   ├── data_exploration.py         # EDA utilities
+│   ├── results_analysis.py         # Result evaluation
+│   └── interpret_results.py        # Result interpretation & visualization
+├── src/
+│   └── utils/                      # Helper modules (optimizer, config loader, metrics)
+├── notebooks/                      # Jupyter notebooks for experimentation
+├── requirements.txt                # Python dependencies
+└── README.md
 ```
 
 ---
 
-## 🔧 Scripts Overview
+## Scripts Overview
+The pipeline consists of three core stages followed by three analysis utilities.
 
-The project has 6 scripts inside `scripts/`. The first three form the **main pipeline** (run in order), and the remaining three are for analysis.
-
-### ⚙️ Main Pipeline
-
-| Script | What it does |
+### Main Pipeline
+| Script | Description |
 |---|---|
-| `prepare_dataset.py` | 📥 Loads raw `.npy` data files for each month, computes derived weather features (wind speed, ventilation coefficient, rain mask), normalises all variables, and saves processed training data. |
-| `train.py` | 🏋️ Trains 3 copies of the WNO model with different random seeds. Uses a combined loss (MSE + spatial gradient penalty) and applies Stochastic Weight Averaging (SWA). Saves one checkpoint per seed. |
-| `infer.py` | 🔮 Loads all 3 trained checkpoints, runs each on test data, averages predictions (ensemble), converts back to physical PM2.5 units, clips negatives to zero, and saves `preds.npy`. |
+| `prepare_dataset.py` | Loads raw `.npy` files, computes derived features (wind speed, ventilation coefficient, rain mask), normalizes variables, and writes processed datasets. |
+| `train.py` | Trains three WNO models with different seeds, applies SWA, and saves checkpoints. |
+| `infer.py` | Runs ensemble inference, averages predictions, converts to physical units, clips negatives to zero, and saves `preds.npy`. |
 
-### 📊 Analysis & Visualisation
-
-| Script | What it does |
+### Analysis & Visualization
+| Script | Description |
 |---|---|
-| `data_exploration.py` | 🗺️ Generates exploratory plots — seasonal PM2.5 maps, emission source hotspot maps, and PM2.5 vs boundary layer height time-series at the most polluted grid cell. |
-| `results_analysis.py` | 📈 Compares predictions against ground truth — RMSE per forecast hour, spatial error map, and predicted vs actual PM2.5 curves. Prints overall test RMSE. |
-| `interpret_results.py` | 🔍 Detailed analysis of `preds.npy` — summary statistics, spatial heatmaps, distribution histograms, hotspot/coldspot maps, anomaly maps, and hour-to-hour change rates. |
+| `data_exploration.py` | Seasonal PM2.5 maps, emission hotspots, and time-series at critical grid cells. |
+| `results_analysis.py` | Forecast RMSE by horizon, spatial error maps, and predicted vs. actual curves. |
+| `interpret_results.py` | Statistical summaries, spatial heatmaps, distributions, hotspot/coldspot maps, and anomaly analysis. |
 
 ---
 
-## 📦 Package Requirements
-
-All required packages are listed in `requirements.txt`:
+## Requirements
+All dependencies are listed in `requirements.txt`.
 
 | Package | Purpose |
 |---|---|
-| `torch>=2.0` | 🔥 Deep learning framework (training, inference, GPU) |
-| `triton` | ⚡ Torch compiler backend |
-| `numpy` | 🔢 Array operations |
-| `scipy` | 🧪 Scientific computing |
-| `pandas` | 🗃️ Data handling |
-| `h5py` | 💾 HDF5 file I/O |
-| `netCDF4` | 🌐 Reading WRF-Chem data |
-| `xarray` | 📐 Labelled multi-dimensional arrays |
-| `matplotlib` | 📉 Plotting |
-| `seaborn` | 🎨 Statistical visualisation |
-| `scikit-learn` | 🤖 ML utilities and metrics |
-| `joblib` | ⚙️ Parallel utilities |
-| `tqdm` | ⏳ Progress bars |
-| `PyYAML` | 📝 YAML config loading |
+| `torch>=2.0` | Deep learning framework (training, inference, GPU) |
+| `triton` | Torch compiler backend |
+| `numpy` | Array operations |
+| `scipy` | Scientific computing |
+| `pandas` | Data handling |
+| `h5py` | HDF5 I/O |
+| `netCDF4` | Reading WRF-Chem data |
+| `xarray` | Labelled multi-dimensional arrays |
+| `matplotlib` | Plotting |
+| `seaborn` | Statistical visualization |
+| `scikit-learn` | ML utilities and metrics |
+| `joblib` | Parallel utilities |
+| `tqdm` | Progress bars |
+| `PyYAML` | YAML config loading |
 
-Install all at once with:
-
+Install with:
 ```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-## 🚀 Run Instructions (Kaggle Notebook)
-
-Open the Kaggle Notebook 👉 [**Group ID 46 — PRML Project**](https://www.kaggle.com/code/tahseen123/group-id-46-prml-project)
-
-and run the code cells in order.
+## Reproducibility (Kaggle Notebook)
+Open the Kaggle notebook and run all cells in order:
+[**Group ID 46 — PRML Project**](https://www.kaggle.com/code/tahseen123/group-id-46-prml-project)
 
 ---
 
-## 📌 Notes
+## Notes
+- Full pipeline runtime: **~3–4 hours** on a Kaggle P100 GPU
+- `/kaggle/working/` is persistent (up to 20 GB)
+- `/kaggle/temp/` is non-persistent and suitable for intermediate artifacts
 
-- ⏱️ The full pipeline takes approximately **3-4 hours** on a Kaggle P100 GPU.
-- 💾 `/kaggle/working/` is persistent storage (up to 20 GB) — final outputs are saved here.
-- 🗑️ `/kaggle/temp/` is non-persistent — used for large intermediate data.
+---
 
-
-## 🚀 Link To Our PPT Presentation:
-https://canva.link/gz3uqqwwhhx3w1p
+## Presentation
+**Project slides:** https://canva.link/gz3uqqwwhhx3w1p
